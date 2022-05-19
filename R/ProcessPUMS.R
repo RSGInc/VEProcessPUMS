@@ -1,26 +1,3 @@
-#=================#
-#Process_2000_PUMS#
-#=================#
-
-#This script processes a Census 5% Public Use Microdata Sample Equivalency
-#file (PUMEQ5) from the 2000 Census for a state to produce files that need
-#to be included in the VESimHouseholds package of the VisionEval model
-#system and used to estimate model parameters for the CreateHouseholds, 
-#PredictWorkers, PredictIncome, and PredictHousing modules. The script
-#references the file downloaded from the Census for the State of Oregon, but can
-#be modified to process the data for another state. The user can download
-#the data for another state from the census at the following URL:
-#https://www2.census.gov/census_2000/datasets/PUMS/FivePercent/PUMS 
-#After downloading the desired state file, the user will need to identify the
-#path to the downloaded file in the code in SECTION A below. The user may also
-#identify specific PUMAs to extract if the data for a specific metropolitan
-#area or metropolitan areas are to be used rather than the data for the whole
-#state. See the code in SECTION A on how to do this. Maps identifying the PUMAs
-#in each state for the 2000 Census are available at the following URL:
-#https://www.census.gov/geographies/reference-maps/2000/geo/2000-pumas.html
-
-
-
 # IMPORTS
 library(data.table)
 library(tools)
@@ -38,23 +15,32 @@ getACSPUMS <- function(STATE, YEAR='2000', output_dir = NA){
     STATE <- tolower(state.abb[match(toTitleCase(STATE),state.name)])
   }
   
-  # Cols
-  CC = list(
-    'h' = c(
-      SERIALNO = 'character',
-      PUMA = 'character',
-      HWEIGHT = 'numeric',
-      UNITTYPE = 'numeric',
-      PERSONS = 'numeric',
-      BLDGSZ = 'character',
-      HINC = 'numeric'),
-    'p' = c(
-      SERIALNO = 'character',
-      AGEP = 'numeric',
-      WRKLYR = 'character',
-      MIL = 'numeric',
-      PINCP = 'numeric')
+  # ACS PUMS to legacy Census PUMS fields
+  meta = list(
+    'h' = list(
+      SERIALNO = list(acsname = 'SERIALNO', class ='character'),
+      PUMA5 = list(acsname='PUMA', class='character'),
+      HWEIGHT = list(acsname='WGTP', class='numeric'),
+      UNITTYPE = list(acsname='TYPE', class='numeric'),
+      PERSONS = list(acsname='NP', class='numeric'),
+      BLDGSZ = list(acsname='BLD', class='character'),
+      HINC = list(acsname='HINCP', class='numeric')
+    ),
+    'p' = list(
+      SERIALNO = list(acsname = 'SERIALNO', class ='character'),
+      AGE = list(acsname='AGEP', class='numeric'),
+      WRKLYR = list(acsname='WKL', class='character'),
+      MILITARY = list(acsname='MIL', class='numeric'),
+      INCTOT = list(acsname='PINCP', class='numeric')
+    )
   )
+  
+  
+  colNames <- lapply(meta, function(x) sapply(x, function(y) y[['acsname']]))
+  colclass <- lapply(meta, function(x) sapply(unname(x), function(y) {
+    setNames(y[['class']], y[['acsname']])
+    }))
+  
   
   # Download the PUMS data to tempfile and load directly to data table
   PUMS <- lapply(c('p', 'h'), function(f) {
@@ -67,17 +53,22 @@ getACSPUMS <- function(STATE, YEAR='2000', output_dir = NA){
     
     if(Sys.info()['sysname'] == 'Windows')
       df <- fread(cmd = paste('unzip -p', temp),
-                  select = names(CC[[f]]),
-                  colClasses = CC[[f]])
+                  select = names(colclass[[f]]),
+                  colClasses = colclass[[f]])
     
     if(Sys.info()['sysname'] == 'Linux')
       df <- fread(cmd = paste('gunzip -cq', temp),
-                  select = names(CC[[f]]),
-                  colClasses = CC[[f]])
+                  select = names(colclass[[f]]),
+                  colClasses = colclass[[f]])
 
+    # Rename ACS PUMS fields to match legacy Census PUMS fields
+    setnames(df, colNames[[f]], names(colNames[[f]]))
+    
     return(df)
   })
   names(PUMS) <- c('p', 'h')
+  
+  
   
   # SAVE OUTPUT
   if(!is.na(output_dir)) {
@@ -129,6 +120,28 @@ getDecPUMS <- function(STATE, output_dir = NA){
 
 
 
+#=================#
+#Process_2000_PUMS#
+#=================#
+
+#This script processes a Census 5% Public Use Microdata Sample Equivalency
+#file (PUMEQ5) from the 2000 Census for a state to produce files that need
+#to be included in the VESimHouseholds package of the VisionEval model
+#system and used to estimate model parameters for the CreateHouseholds, 
+#PredictWorkers, PredictIncome, and PredictHousing modules. The script
+#references the file downloaded from the Census for the State of Oregon, but can
+#be modified to process the data for another state. The user can download
+#the data for another state from the census at the following URL:
+#https://www2.census.gov/census_2000/datasets/PUMS/FivePercent/PUMS 
+#After downloading the desired state file, the user will need to identify the
+#path to the downloaded file in the code in SECTION A below. The user may also
+#identify specific PUMAs to extract if the data for a specific metropolitan
+#area or metropolitan areas are to be used rather than the data for the whole
+#state. See the code in SECTION A on how to do this. Maps identifying the PUMAs
+#in each state for the 2000 Census are available at the following URL:
+#https://www.census.gov/geographies/reference-maps/2000/geo/2000-pumas.html
+
+
 #-----------------------------------------------------------
 #SECTION A - IDENTIFY THE STATE PUMS FILE AND SELECTED PUMAS
 #-----------------------------------------------------------
@@ -151,8 +164,6 @@ getDecPUMS <- function(STATE, output_dir = NA){
 #---------------------------------------------------------
 #SECTION B: READ IN AND EXTRACT HOUSEHOLD AND PERSONS DATA
 #---------------------------------------------------------
-
-
 process_pums <- function(PumsFile, GetPumas='ALL') {
   #Read in file and split out household and person tables
   #------------------------------------------------------
