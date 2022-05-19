@@ -91,7 +91,7 @@ getACSPUMS <- function(STATE, YEAR='2000', output_dir = NA){
 
 
 # Downloads legacy 2000 PUMS data
-getDecPUMS <- function(STATE, output_dir = './output'){
+getDecPUMS <- function(STATE, output_dir = NA){
   #VARS
   state_codes <- fread('state.txt')
   state_codes <- setNames(state_codes$STATE, state_codes$STUSAB)
@@ -153,7 +153,7 @@ getDecPUMS <- function(STATE, output_dir = './output'){
 #---------------------------------------------------------
 
 
-read_pums <- function(PumsFile, GetPumas='ALL') {
+process_pums <- function(PumsFile, GetPumas='ALL') {
   #Read in file and split out household and person tables
   #------------------------------------------------------
   Pums_ <- readLines(PumsFile)
