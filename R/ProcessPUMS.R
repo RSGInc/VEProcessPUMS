@@ -3,84 +3,6 @@ library(data.table)
 library(tools)
 
 
-#
-getACSPUMS <- function(STATE, YEAR='2000', output_dir = NA){
-  #VARS
-  state_codes <- fread('inst/extdata/state.txt')
-  state_codes <- setNames(state_codes$STATE, state_codes$STUSAB)
-  
-  base_url = 'https://www2.census.gov/programs-surveys/acs/data/pums/'
-  
-  if(length(STATE) > 2 & !is.numeric(STATE)) {
-    STATE <- tolower(state.abb[match(toTitleCase(STATE),state.name)])
-  }
-  
-  # ACS PUMS to legacy Census PUMS fields
-  meta = list(
-    'h' = list(
-      SERIALNO = list(acsname = 'SERIALNO', class ='character'),
-      PUMA5 = list(acsname='PUMA', class='character'),
-      HWEIGHT = list(acsname='WGTP', class='numeric'),
-      UNITTYPE = list(acsname='TYPE', class='numeric'),
-      PERSONS = list(acsname='NP', class='numeric'),
-      BLDGSZ = list(acsname='BLD', class='character'),
-      HINC = list(acsname='HINCP', class='numeric')
-    ),
-    'p' = list(
-      SERIALNO = list(acsname = 'SERIALNO', class ='character'),
-      AGE = list(acsname='AGEP', class='numeric'),
-      WRKLYR = list(acsname='WKL', class='character'),
-      MILITARY = list(acsname='MIL', class='numeric'),
-      INCTOT = list(acsname='PINCP', class='numeric')
-    )
-  )
-  
-  
-  colNames <- lapply(meta, function(x) sapply(x, function(y) y[['acsname']]))
-  colclass <- lapply(meta, function(x) sapply(unname(x), function(y) {
-    setNames(y[['class']], y[['acsname']])
-    }))
-  
-  
-  # Download the PUMS data to tempfile and load directly to data table
-  PUMS <- lapply(c('p', 'h'), function(f) {
-    url <- file.path(base_url,
-                     YEAR,
-                     paste0('csv_', f, tolower(STATE), '.zip'))
-    
-    temp <- tempfile()
-    download.file(url, temp)
-    
-    if(Sys.info()['sysname'] == 'Windows')
-      df <- fread(cmd = paste('unzip -p', temp),
-                  select = names(colclass[[f]]),
-                  colClasses = colclass[[f]])
-    
-    if(Sys.info()['sysname'] == 'Linux')
-      df <- fread(cmd = paste('gunzip -cq', temp),
-                  select = names(colclass[[f]]),
-                  colClasses = colclass[[f]])
-
-    # Rename ACS PUMS fields to match legacy Census PUMS fields
-    setnames(df, colNames[[f]], names(colNames[[f]]))
-    
-    return(df)
-  })
-  names(PUMS) <- c('p', 'h')
-  
-  
-  
-  # SAVE OUTPUT
-  if(!is.na(output_dir)) {
-    if(!dir.exists(output_dir)) dir.create(output_dir)
-    fwrite(PUMS[['p']], file.path(output_dir, 'pums_persons.csv'))
-    fwrite(PUMS[['h']], file.path(output_dir, 'pums_households.csv'))
-  } else {
-    return(PUMS)
-  }
-}
-
-
 # Downloads legacy 2000 PUMS data
 getDecPUMS <- function(STATE, output_dir = NA){
   #VARS
@@ -116,6 +38,101 @@ getDecPUMS <- function(STATE, output_dir = NA){
   } else {
     return(PUMS)
   }
+}
+
+
+#
+getACSPUMS <- function(STATE, YEAR='2000', GetPumas='ALL', output_dir = NA){
+  #VARS
+  state_codes <- fread('inst/extdata/state.txt')
+  state_codes <- setNames(state_codes$STATE, state_codes$STUSAB)
+  base_url = 'https://www2.census.gov/programs-surveys/acs/data/pums'
+  
+
+  if(length(STATE) > 2 & !is.numeric(STATE)) {
+    STATE <- tolower(state.abb[match(toTitleCase(STATE),state.name)])
+  }
+  
+ 
+  # Download the PUMS data to tempfile and load directly to data table
+  PUMS <- lapply(c('p', 'h'), function(f) {
+    url <- file.path(base_url, YEAR, '5-Year',
+                     paste0('csv_', f, tolower(STATE), '.zip'))
+    
+    temp <- tempfile()
+    download.file(url, temp)
+    
+    
+    df <- process_acs_pums(temp, type=f, GetPumas)
+  
+    return(df)
+  })
+  names(PUMS) <- c('p', 'h')
+  
+  
+  
+  # SAVE OUTPUT
+  if(!is.na(output_dir)) {
+    if(!dir.exists(output_dir)) dir.create(output_dir)
+    fwrite(PUMS[['p']], file.path(output_dir, 'pums_persons.csv'))
+    fwrite(PUMS[['h']], file.path(output_dir, 'pums_households.csv'))
+  } else {
+    return(PUMS)
+  }
+}
+
+
+
+
+process_acs_pums <- function(PumsFile, type, GetPumas='ALL') {
+  # ACS PUMS to legacy Census PUMS fields
+  meta = list(
+    'h' = list(
+      SERIALNO = list(acsname = 'SERIALNO', class ='character'),
+      PUMA5 = list(acsname='PUMA', class='character'),
+      HWEIGHT = list(acsname='WGTP', class='numeric'),
+      UNITTYPE = list(acsname='TYPE', class='numeric'),
+      PERSONS = list(acsname='NP', class='numeric'),
+      BLDGSZ = list(acsname='BLD', class='character'),
+      HINC = list(acsname='HINCP', class='numeric')
+    ),
+    'p' = list(
+      SERIALNO = list(acsname = 'SERIALNO', class ='character'),
+      AGE = list(acsname='AGEP', class='numeric'),
+      WRKLYR = list(acsname='WKL', class='character'),
+      MILITARY = list(acsname='MIL', class='numeric'),
+      INCTOT = list(acsname='PINCP', class='numeric')
+    )
+  )
+  
+  colNames <- lapply(meta, function(x) sapply(x, function(y) y[['acsname']]))
+  colclass <- lapply(meta, function(x) sapply(unname(x), function(y) {
+    setNames(y[['class']], y[['acsname']])
+  }))
+  
+  
+  
+  if(Sys.info()['sysname'] == 'Windows')
+    cmd <- paste('unzip -p', PumsFile)
+  
+  if(Sys.info()['sysname'] == 'Linux')
+    cmd <- paste('gunzip -cq', PumsFile)
+  
+
+  if(grepl('.zip', PumsFile)) {
+    df <- fread(cmd = cmd, 
+                select = names(colclass[[type]]),
+                colClasses = colclass[[type]])
+  } else {
+    df <- fread(PumsFile,
+                select = names(colclass[[type]]),
+                colClasses = colclass[[type]])
+  }
+  
+  # Rename ACS PUMS fields to match legacy Census PUMS fields
+  setnames(df, colNames[[type]], names(colNames[[type]]))
+  
+  return(df)
 }
 
 
@@ -164,7 +181,7 @@ getDecPUMS <- function(STATE, output_dir = NA){
 #---------------------------------------------------------
 #SECTION B: READ IN AND EXTRACT HOUSEHOLD AND PERSONS DATA
 #---------------------------------------------------------
-process_pums <- function(PumsFile, GetPumas='ALL') {
+process_2000_pums <- function(PumsFile, GetPumas='ALL') {
   #Read in file and split out household and person tables
   #------------------------------------------------------
   Pums_ <- readLines(PumsFile)
